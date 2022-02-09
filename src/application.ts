@@ -10,12 +10,12 @@ import "reflect-metadata"
 import { buildSchema } from "type-graphql"
 import ormConfig from "../orm.config"
 import { ExpressContext } from "./contexts/ExpressContext"
-import { FileResolver } from "./modules/file/File"
-import { ProjectResolver } from "./modules/project/Project"
+import { GameResolver } from "./modules/game/Game"
 import { authChecker } from "./modules/user/authChecker"
 import { AuthorizationResolver } from "./modules/user/Authorization"
 import { LoginResolver } from "./modules/user/Login"
 import { RegisterResolver } from "./modules/user/Register"
+import puppeteer from "puppeteer"
 
 const port = process.env.PORT || 4000
 
@@ -23,10 +23,14 @@ export default class Application {
   orm: MikroORM<IDatabaseDriver<Connection>>
   app: express.Application
   server: Server
+  browser: puppeteer.Browser
+  pages: Map<string, puppeteer.Page>
 
   async connect(config: any = ormConfig): Promise<void> {
     try {
       this.orm = await MikroORM.init<MongoDriver>(config)
+      this.browser = await puppeteer.launch()
+      this.pages = new Map<string, puppeteer.Page>()
     } catch (error) {
       console.error(chalk.red("📌 Could not connect to the database"), error)
       throw Error(error as string)
@@ -40,8 +44,7 @@ export default class Application {
         LoginResolver,
         RegisterResolver,
         AuthorizationResolver,
-        FileResolver,
-        ProjectResolver,
+        GameResolver,
       ],
       authChecker,
     })
@@ -53,6 +56,8 @@ export default class Application {
           req,
           res,
           em: this.orm.em.fork(),
+          b: this.browser,
+          pages: this.pages,
         } as ExpressContext),
     })
 
