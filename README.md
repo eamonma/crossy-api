@@ -1,2 +1,2 @@
-# Hermes Server
-A file transfer platform geared towards client delivery built with TypeScript, Node.js, GraphQL, and React.
+# Crossword API
+For the backend puzzle and database logic for crossword-bot
