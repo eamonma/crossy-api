@@ -46,7 +46,7 @@ export default class Game extends Base<Game> {
 
   @Field(type => [String], { nullable: "items" })
   @Property()
-  answers: Array<string> = []
+  answers: Array<string | null> = []
 
   @Field(type => String)
   @Property()

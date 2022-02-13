@@ -10,67 +10,68 @@ export const authChecker: AuthChecker<ExpressContext> = async (
 ): Promise<boolean> => {
   // console.log(roles)
 
-  if (clientRequesting) {
-    return true
-  }
-  try {
-    const accessToken = (req.header("Authorization") as string).replace(
-      "Bearer ",
-      ""
-    )
-    const refreshToken = req.header("Refresh-Token") as string
+  return true
+  // if (clientRequesting) {
+  //   return true
+  // }
+  // try {
+  //   const accessToken = (req.header("Authorization") as string).replace(
+  //     "Bearer ",
+  //     ""
+  //   )
+  //   const refreshToken = req.header("Refresh-Token") as string
 
-    // Guard for neither token exists
-    if (!accessToken && !refreshToken) return false
+  //   // Guard for neither token exists
+  //   if (!accessToken && !refreshToken) return false
 
-    // Check accessToken is valid
-    try {
-      const verified = verify(
-        accessToken,
-        process.env.ACCESS_SECRET as string
-      ) as { id: string }
+  //   // Check accessToken is valid
+  //   try {
+  //     const verified = verify(
+  //       accessToken,
+  //       process.env.ACCESS_SECRET as string
+  //     ) as { id: string }
 
-      const { id } = verified
-      const user = await em.findOne(User, { id })
+  //     const { id } = verified
+  //     const user = await em.findOne(User, { id })
 
-      // Guard for user not exist
-      if (!user) return false
-      res.locals.user = user
+  //     // Guard for user not exist
+  //     if (!user) return false
+  //     res.locals.user = user
 
-      return true
-    } catch (error) {}
+  //     return true
+  //   } catch (error) {}
 
-    let data
+  //   let data
 
-    try {
-      data = verify(refreshToken, process.env.REFRESH_SECRET as string) as {
-        id: string
-        refreshTokenCount: number
-      }
-    } catch (error) {
-      return false
-    }
+  //   try {
+  //     data = verify(refreshToken, process.env.REFRESH_SECRET as string) as {
+  //       id: string
+  //       refreshTokenCount: number
+  //     }
+  //   } catch (error) {
+  //     return false
+  //   }
 
-    const { id, refreshTokenCount } = data
+  //   const { id, refreshTokenCount } = data
 
-    const user = (await em.findOne(User, { id })) as User
+  //   const user = (await em.findOne(User, { id })) as User
 
-    // Invalid token or user not exist
-    if (!user || user.refreshTokenCount !== refreshTokenCount) return false
+  //   // Invalid token or user not exist
+  //   if (!user || user.refreshTokenCount !== refreshTokenCount) return false
 
-    // Valid refreshToken so send new token pair
-    const { refreshToken: newRefreshToken, accessToken: newAccessToken } =
-      createTokens(user)
+  //   // Valid refreshToken so send new token pair
+  //   const { refreshToken: newRefreshToken, accessToken: newAccessToken } =
+  //     createTokens(user)
 
-    res.set({
-      "Token": newAccessToken,
-      "Refresh-Token": newRefreshToken,
-    })
+  //   res.set({
+  //     "Token": newAccessToken,
+  //     "Refresh-Token": newRefreshToken,
+  //   })
 
-    res.locals.user = user
+  //   res.locals.user = user
 
-    return true
-  } catch (err) {
-    return false
-  }
+  //   return true
+  // } catch (err) {
+  //   return false
+  // }
 }

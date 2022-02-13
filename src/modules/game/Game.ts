@@ -13,6 +13,8 @@ import {
   Int,
   Mutation,
   ObjectType,
+  PubSub,
+  PubSubEngine,
   Query,
   Resolver,
   Root,
@@ -25,6 +27,10 @@ import s3 from "./s3"
 import axios from "axios"
 import puppeteer, { InterceptResolutionAction, Puppeteer } from "puppeteer"
 import User from "../../entities/User"
+import {
+  AnswerNotification,
+  AnswerNotificationPayload,
+} from "./notification.type"
 
 type Answers = {
   across: Array<string>
@@ -55,8 +61,8 @@ export interface CrosswordData {
 class Correctness {
   @Field(type => Boolean)
   allCorrect: boolean
-  @Field(type => [Boolean])
-  mismatched: Array<boolean>
+  @Field(type => [Number])
+  mismatched: Array<number>
 }
 
 @Resolver()
@@ -149,22 +155,59 @@ export class GameResolver {
     })
   }
 
-  async checkGameAnswersMatch(game: Game): Promise<[boolean, Array<boolean>]> {
+  async checkGameAnswersMatch(game: Game): Promise<Array<number>> {
     const puzzle: CrosswordData = JSON.parse(game.puzzle)
-    const mismatched: Array<boolean> = []
+    const mismatched: Array<number> = []
 
     puzzle.grid.forEach((grid, i) => {
+      if (!game.answers || !game.answers[i]) return
+
       if (
         grid === "." ||
-        !game.answers[i] ||
-        grid[0].toUpperCase() === game.answers[i].toUpperCase()
+        grid[0].toUpperCase() === game.answers[i]!.toUpperCase()
       )
-        return (mismatched[i] = false)
+        return
 
-      return (mismatched[i] = true)
+      return mismatched.push(i)
     })
 
-    return [mismatched.every(grid => !grid), mismatched]
+    return mismatched
+  }
+
+  addAcross(
+    answer: string,
+    gridNum: number,
+    puzzle: CrosswordData,
+    answers: Array<string | null>
+  ): Array<string | null> {
+    const newAnswers = [...answers]
+    const index = puzzle.gridnums.findIndex(num => num === gridNum)
+
+    const newUpdatedAnswers: Array<number> = []
+    Array.from(answer).forEach((letter, i) => {
+      newAnswers[index + i] = letter.toUpperCase()
+      newUpdatedAnswers[index + i] = 1
+    })
+
+    return newAnswers
+  }
+
+  addDown(
+    answer: string,
+    gridNum: number,
+    puzzle: CrosswordData,
+    answers: Array<string | null>
+  ): Array<string | null> {
+    const newAnswers = [...answers]
+    const index = puzzle.gridnums.findIndex(num => num === gridNum)
+
+    const newUpdatedAnswers: Array<number> = []
+    Array.from(answer).forEach((letter, i) => {
+      newAnswers[index + i * puzzle.size.cols] = letter.toUpperCase()
+      newUpdatedAnswers[index + i * puzzle.size.cols] = 1
+    })
+
+    return newAnswers
   }
 
   @Query(type => Game)
@@ -191,6 +234,22 @@ export class GameResolver {
     game.image = await this.screenshotGrid(crosswordGrid)
 
     await em.persist(game).flush()
+
+    return game
+  }
+
+  @Query(type => Game)
+  async gameById(
+    @Arg("gameId") gameId: string,
+    @Ctx() ctx: ExpressContext
+  ): Promise<Game> {
+    const { em } = ctx
+
+    const game: Game = (await em.findOne(Game, {
+      id: gameId,
+    })) as Game
+
+    if (!game) throw new Error("No such game.")
 
     return game
   }
@@ -224,29 +283,43 @@ export class GameResolver {
     })) as Game
     const page = await this.getPage(game, ctx)
 
-    const [_, mismatched] = await this.checkGameAnswersMatch(game)
+    const mismatched = await this.checkGameAnswersMatch(game)
+
+    const mismatchedObject: { [gridNum: number]: string } = {}
+
+    for (const mismatch of mismatched.values()) {
+      mismatchedObject[mismatch] = "#ffa196"
+    }
 
     // Set highlights colour
-    await page.click("#reset-highlights-colour")
-    await page.click("#highlights-colour")
-    await page.keyboard.press("Backspace")
-    await page.keyboard.press("Backspace")
-    await page.keyboard.press("Backspace")
-    await page.keyboard.press("Backspace")
-    await page.keyboard.press("Backspace")
-    await page.keyboard.press("Backspace")
-    await page.keyboard.press("Backspace")
-    await page.keyboard.press("Backspace")
-    await page.keyboard.press("Backspace")
-    await page.type("#highlights-colour", "#ffa196")
+    // await page.click("#reset-highlights-colour")
+    // await page.click("#highlights-colour")
+    // await page.keyboard.press("Backspace")
+    // await page.keyboard.press("Backspace")
+    // await page.keyboard.press("Backspace")
+    // await page.keyboard.press("Backspace")
+    // await page.keyboard.press("Backspace")
+    // await page.keyboard.press("Backspace")
+    // await page.keyboard.press("Backspace")
+    // await page.keyboard.press("Backspace")
+    // await page.keyboard.press("Backspace")
+    // await page.type("#highlights-colour", "#ffa196")
 
-    // Set highlights
+    // // Set highlights
     await page.click("#clear-highlights")
-    await page.click("#highlights-input")
-    await page.keyboard.press("Backspace")
-    await page.keyboard.press("Backspace")
-    await page.keyboard.type(JSON.stringify(mismatched))
+
+    const highlightsElement = await page.$("#highlights-input")
+
+    await highlightsElement!.click({ clickCount: 3 })
+
+    await highlightsElement?.type(JSON.stringify(mismatchedObject))
+
     await page.click("#set-highlights")
+    // await page.click("#highlights-input")
+    // await page.keyboard.press("Backspace")
+    // await page.keyboard.press("Backspace")
+    // await page.keyboard.type(JSON.stringify(mismatched))
+    // await page.click("#set-highlights")
 
     const crosswordGrid = await page.$("#crossword-grid")
     game.image = await this.screenshotGrid(crosswordGrid)
@@ -271,7 +344,9 @@ export class GameResolver {
       active: true,
     })) as Game
 
-    const [allCorrect, mismatched] = await this.checkGameAnswersMatch(game)
+    const mismatched = await this.checkGameAnswersMatch(game)
+
+    const allCorrect = mismatched.length === 0
 
     if (allCorrect) {
       game.active = false
@@ -354,6 +429,27 @@ export class GameResolver {
     return game
   }
 
+  // @Mutation(returns => Boolean)
+  // async filledSubscription(
+  //   @PubSub() pubSub: PubSubEngine,
+  //   @Arg("topic") topic: string,
+  //   @Arg("message", { nullable: true }) message?: string
+  // ): Promise<boolean> {
+  //   const payload: AnswerNotificationPayload = {channelId }
+  //   await pubSub.publish(topic, payload)
+  //   return true
+  // }
+
+  @Subscription({
+    topics: ({ args }) => args.topic,
+  })
+  subscribeToGameUpdate(
+    @Arg("topic") topic: string,
+    @Root() { gameId, answers }: AnswerNotificationPayload
+  ): AnswerNotification {
+    return { gameId, answers }
+  }
+
   @Mutation(type => Game)
   async fill(
     @Arg("gridNum") gridNum: number,
@@ -362,6 +458,7 @@ export class GameResolver {
     @Arg("guildId") guildId: string,
     @Arg("channelId") channelId: string,
     @Arg("playerId") playerId: string,
+    @PubSub() pubSub: PubSubEngine,
     @Ctx() ctx: ExpressContext
   ): Promise<Game | null> {
     const { req, res, em, b, pages } = ctx
@@ -381,6 +478,22 @@ export class GameResolver {
     const page = await this.getPage(game, ctx)
 
     // Type the entry
+    // const newAnswers =
+    const puzzle = JSON.parse(game.puzzle)
+    if (direction === "across") {
+      game.answers = this.addAcross(answer, gridNum, puzzle, game.answers)
+    } else if (direction === "down") {
+      game.answers = this.addDown(answer, gridNum, puzzle, game.answers)
+    }
+
+    // PubSub push notification
+    const payload: AnswerNotificationPayload = {
+      answers: game.answers as Array<string>,
+      gameId: game.id,
+    }
+
+    await pubSub.publish(game.id, payload)
+
     const numberInput = await page.$("#number")
     if (!numberInput) throw new Error("No such input")
 
@@ -391,18 +504,18 @@ export class GameResolver {
     await page.type("#answer", answer)
     await page.click("#add-answer")
 
-    const allAnswers = await page.$("#all-answer-input")
+    await page.click("#set-answers")
 
-    const pageAnswers = await (
-      await allAnswers?.getProperty("value")
-    )?.jsonValue()
+    // const pageAnswers = await (
+    //   await allAnswers?.getProperty("value")
+    // )?.jsonValue()
 
-    if (!pageAnswers) throw new Error("No such textarea")
+    // if (!pageAnswers) throw new Error("No such textarea")
 
-    const answers = await JSON.parse(pageAnswers as string)
+    // const answers = await JSON.parse(pageAnswers as string)
 
-    // TODO: Change this from react-given to server-given
-    game.answers = answers
+    // // TODO: Change this from react-given to server-given
+    // game.answers = answers
 
     const crosswordGrid = await page.$("#crossword-grid")
 
