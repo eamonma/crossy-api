@@ -15,13 +15,16 @@ import {
   ObjectType,
   Query,
   Resolver,
+  Root,
+  Subscription,
 } from "type-graphql"
 import { ExpressContext } from "../../contexts/ExpressContext"
 import Game from "../../entities/Game"
 import { FileInput } from "./FileInput"
 import s3 from "./s3"
 import axios from "axios"
-import puppeteer, { Puppeteer } from "puppeteer"
+import puppeteer, { InterceptResolutionAction, Puppeteer } from "puppeteer"
+import User from "../../entities/User"
 
 type Answers = {
   across: Array<string>
@@ -103,6 +106,25 @@ export class GameResolver {
     return page
   }
 
+  async getPage(game: Game, ctx: ExpressContext): Promise<puppeteer.Page> {
+    const { pages, b } = ctx
+    let page = pages.get(game.id)
+
+    const { guildId, channelId } = game
+
+    try {
+      if (page && page.isClosed()) page = undefined
+      if (!page) {
+        page = await this.revitalizePage(game, guildId, channelId, b, pages)
+      }
+      await page.$("#crossword-grid")
+    } catch (error) {
+      page = await this.revitalizePage(game, guildId, channelId, b, pages)
+    }
+
+    return page
+  }
+
   async screenshotGrid(
     crosswordGrid: puppeteer.ElementHandle<Element> | null
   ): Promise<string> {
@@ -132,7 +154,11 @@ export class GameResolver {
     const mismatched: Array<boolean> = []
 
     puzzle.grid.forEach((grid, i) => {
-      if (grid === "." || grid[0] === game.answers[i] || !game.answers[i])
+      if (
+        grid === "." ||
+        !game.answers[i] ||
+        grid[0].toUpperCase() === game.answers[i].toUpperCase()
+      )
         return (mismatched[i] = false)
 
       return (mismatched[i] = true)
@@ -145,21 +171,21 @@ export class GameResolver {
   async game(
     @Arg("guildId") guildId: string,
     @Arg("channelId") channelId: string,
-    @Ctx() { req, res, em, b, pages }: ExpressContext
+    @Ctx() ctx: ExpressContext
   ): Promise<Game> {
+    const { req, res, em, b, pages } = ctx
+
     const game: Game = (await em.findOne(Game, {
       guildId,
       channelId,
       active: true,
     })) as Game
 
-    let page = pages.get(game.id)
-    if (!game) throw new Error("No such game")
+    console.log(!game)
 
-    if (page && page.isClosed()) page = undefined
-    if (!page) {
-      page = await this.revitalizePage(game, guildId, channelId, b, pages)
-    }
+    if (!game) throw new Error("No such game.")
+
+    const page = await this.getPage(game, ctx)
 
     const crosswordGrid = await page.$("#crossword-grid")
     game.image = await this.screenshotGrid(crosswordGrid)
@@ -188,21 +214,15 @@ export class GameResolver {
   async whichIncorrect(
     @Arg("guildId") guildId: string,
     @Arg("channelId") channelId: string,
-    @Ctx() { req, res, em, b, pages }: ExpressContext
+    @Ctx() ctx: ExpressContext
   ): Promise<Game> {
+    const { req, res, em, b, pages } = ctx
     const game: Game = (await em.findOne(Game, {
       guildId,
       channelId,
       active: true,
     })) as Game
-    let page = pages.get(game.id)
-
-    if (!game) throw new Error("No such game")
-
-    if (page && page.isClosed()) page = undefined
-    if (!page) {
-      page = await this.revitalizePage(game, guildId, channelId, b, pages)
-    }
+    const page = await this.getPage(game, ctx)
 
     const [_, mismatched] = await this.checkGameAnswersMatch(game)
 
@@ -341,24 +361,27 @@ export class GameResolver {
     @Arg("answer") answer: string,
     @Arg("guildId") guildId: string,
     @Arg("channelId") channelId: string,
-    @Ctx() { req, res, em, b, pages }: ExpressContext
+    @Arg("playerId") playerId: string,
+    @Ctx() ctx: ExpressContext
   ): Promise<Game | null> {
-    const game: Game = (await em.findOne(Game, {
-      guildId,
-      channelId,
-      active: true,
-    })) as Game
+    const { req, res, em, b, pages } = ctx
+    const game: Game = (await em.findOne(
+      Game,
+      {
+        guildId,
+        channelId,
+        active: true,
+      },
+      { populate: ["players"] }
+    )) as Game
 
-    let page = pages.get(game.id)
     if (!game) throw new Error("No such game")
 
-    if (page && page.isClosed()) page = undefined
-    if (!page) {
-      page = await this.revitalizePage(game, guildId, channelId, b, pages)
-    }
+    // Get the web page
+    const page = await this.getPage(game, ctx)
 
+    // Type the entry
     const numberInput = await page.$("#number")
-
     if (!numberInput) throw new Error("No such input")
 
     await numberInput.click()
@@ -378,11 +401,31 @@ export class GameResolver {
 
     const answers = await JSON.parse(pageAnswers as string)
 
+    // TODO: Change this from react-given to server-given
     game.answers = answers
 
     const crosswordGrid = await page.$("#crossword-grid")
 
     game.image = await this.screenshotGrid(crosswordGrid)
+
+    if (!game.history) game.history = []
+
+    game.history.push({
+      playerId,
+      answer: answer.toUpperCase(),
+      direction,
+      gridNum,
+    })
+
+    // if(!game.players) game.players = []
+
+    // wrap(game).assign({players: })
+    // Player information
+    let player: User = (await em.findOne(User, { discordId: playerId })) as User
+
+    if (!player) player = new User({ discordId: playerId })
+
+    if (!game.players.contains(player)) game.players.add(player)
 
     await em.persist(game).flush()
 

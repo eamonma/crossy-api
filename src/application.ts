@@ -16,6 +16,8 @@ import { AuthorizationResolver } from "./modules/user/Authorization"
 import { LoginResolver } from "./modules/user/Login"
 import { RegisterResolver } from "./modules/user/Register"
 import puppeteer from "puppeteer"
+import { SampleResolver } from "./modules/game/sampleSubscription"
+import http from "http"
 
 const port = process.env.PORT || 4000
 
@@ -45,12 +47,16 @@ export default class Application {
         RegisterResolver,
         AuthorizationResolver,
         GameResolver,
+        SampleResolver,
       ],
       authChecker,
     })
 
     const apolloServer = new ApolloServer({
       schema,
+      subscriptions: {
+        path: "/subscriptions",
+      },
       context: ({ req, res }: any) =>
         ({
           req,
@@ -73,9 +79,21 @@ export default class Application {
 
     apolloServer.applyMiddleware({ app: this.app, path: "/api" })
 
-    this.server = this.app.listen(port, () => {
+    const httpServer = http.createServer(this.app)
+
+    apolloServer.installSubscriptionHandlers(httpServer)
+
+    this.server = httpServer.listen(port, () => {
       const { PROTOCOL, DOMAIN } = process.env
       console.log(`Server up on ${PROTOCOL}${DOMAIN}:${port}/api`)
+      console.log(
+        `Subscriptions ready at ws://localhost:${port}${apolloServer.subscriptionsPath}`
+      )
     })
+
+    // this.server = this.app.listen(port, () => {
+    //   const { PROTOCOL, DOMAIN } = process.env
+    //   console.log(`Server up on ${PROTOCOL}${DOMAIN}:${port}/api`)
+    // })
   }
 }

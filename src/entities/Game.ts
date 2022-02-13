@@ -1,15 +1,30 @@
 import {
+  Collection,
   Entity,
+  ManyToMany,
   ManyToOne,
   Property,
   SerializedPrimaryKey,
 } from "@mikro-orm/core"
 import { Field, ID, Int, ObjectType, Root } from "type-graphql"
 import { Base } from "./Base"
-/*
- * File key format:
- * project.client/project.name/file.name
- */
+import User from "./User"
+
+@ObjectType()
+export class HistoryEntry {
+  @Field(type => String)
+  playerId: string
+
+  @Field(type => Number)
+  gridNum: number
+
+  @Field(type => String)
+  direction: "across" | "down"
+
+  @Field(type => String)
+  answer: string
+}
+
 @ObjectType()
 @Entity()
 export default class Game extends Base<Game> {
@@ -44,6 +59,14 @@ export default class Game extends Base<Game> {
   @Field(type => Boolean)
   @Property()
   active: boolean = true
+
+  @Field(type => User)
+  @ManyToMany(() => User, user => user.games)
+  players = new Collection<User>(this)
+
+  @Field(type => [HistoryEntry])
+  @Property()
+  history: Array<HistoryEntry> = []
 
   // @Field(type => Project)
   // @ManyToOne(type => Project, { wrappedReference: true })
