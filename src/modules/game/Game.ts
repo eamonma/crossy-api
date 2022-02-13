@@ -81,7 +81,7 @@ export class GameResolver {
     pages: Map<string, puppeteer.Page>
   ): Promise<puppeteer.Page> {
     const page = await browser.newPage()
-    await page.goto("http://localhost:3000")
+    await page.goto(process.env.GRID_URL as string)
     await page.setViewport({
       width: 1920,
       height: 1080,
@@ -394,7 +394,7 @@ export class GameResolver {
     if (existingGame) throw new Error("Game in this channel already exists.")
 
     const page = await b.newPage()
-    await page.goto("http://localhost:3000")
+    await page.goto(process.env.GRID_URL as string)
     await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 2 })
 
     await page.waitForSelector("#crossword-grid")

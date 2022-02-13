@@ -1,0 +1,22 @@
+version: '3'
+
+services:
+  app:
+    env_file:
+      - .env
+    container_name: docker-node-mongo
+    restart: always
+    build: .
+    ports: 
+      - 4000:4000
+    links:
+      - mongo
+  mongo:
+    container_name: mongo
+    image: mongo
+    ports:
+      - 27017:27017
+    volumes:
+      - mongodb:/data/db
+volumes:
+  mongodb:

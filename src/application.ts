@@ -31,7 +31,14 @@ export default class Application {
   async connect(config: any = ormConfig): Promise<void> {
     try {
       this.orm = await MikroORM.init<MongoDriver>(config)
-      this.browser = await puppeteer.launch()
+      this.browser = await puppeteer.launch({
+        args: [
+          "--disable-gpu",
+          "--disable-dev-shm-usage",
+          "--disable-setuid-sandbox",
+          "--no-sandbox",
+        ],
+      })
       this.pages = new Map<string, puppeteer.Page>()
     } catch (error) {
       console.error(chalk.red("📌 Could not connect to the database"), error)

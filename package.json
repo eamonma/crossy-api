@@ -1,5 +1,5 @@
 {
-  "name": "hermes-server",
+  "name": "crossy-api",
   "version": "0.0.1",
   "description": "A file transfer platform geared towards client delivery built with TypeScript, Node.js, GraphQL, and React.",
   "main": "src/index.ts",
