@@ -33,7 +33,7 @@ export default class Application {
       this.orm = await MikroORM.init<MongoDriver>(config)
       this.browser = await puppeteer.launch({
         args: [
-          "--disable-gpu",
+          // "--disable-gpu",
           "--disable-dev-shm-usage",
           "--disable-setuid-sandbox",
           "--no-sandbox",
