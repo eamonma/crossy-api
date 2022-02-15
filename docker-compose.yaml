@@ -4,7 +4,7 @@ services:
   app:
     env_file:
       - .env
-    container_name: docker-node-mongo
+    container_name: crossy-api
     restart: always
     build: .
     ports: 
@@ -16,6 +16,9 @@ services:
     image: mongo
     ports:
       - 27017:27017
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
     volumes:
       - mongodb:/data/db
 volumes:
