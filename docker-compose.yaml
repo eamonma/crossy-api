@@ -11,14 +11,18 @@ services:
       - 4000:4000
     links:
       - mongo
+
   mongo:
-    container_name: mongo
     image: mongo
+    restart: always
+    container_name: mongo
     ports:
       - 27017:27017
+    env_file:
+            - .env
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
-      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+        MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+        MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
     volumes:
       - mongodb:/data/db
 volumes:
