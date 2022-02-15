@@ -22,8 +22,11 @@ export class AnswerNotification {
   @Field(type => ID)
   gameId: string
 
-  // @Field(type => String)
-  // guildId: string
+  @Field(type => Date)
+  updatedAt: Date
+
+  @Field(type => Boolean)
+  active: boolean
 
   @Field(type => [String!], { nullable: "items" })
   answers: Array<string | null>
@@ -34,5 +37,7 @@ export class AnswerNotification {
 
 export interface AnswerNotificationPayload {
   gameId: string
+  updatedAt: Date
+  active: boolean
   answers: Array<string | null>
 }

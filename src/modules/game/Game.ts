@@ -335,6 +335,8 @@ export class GameResolver {
   async checkCorrect(
     @Arg("guildId") guildId: string,
     @Arg("channelId") channelId: string,
+    @PubSub() pubSub: PubSubEngine,
+
     @Ctx() ctx: ExpressContext
   ): Promise<Correctness> {
     const { req, res, em, b, pages } = ctx
@@ -349,8 +351,7 @@ export class GameResolver {
     const allCorrect = mismatched.length === 0
 
     if (allCorrect) {
-      game.active = false
-      game.image = ""
+      this.endGame(guildId, channelId, pubSub, ctx)
     }
 
     em.persist(game).flush()
@@ -362,6 +363,8 @@ export class GameResolver {
   async endGame(
     @Arg("guildId") guildId: string,
     @Arg("channelId") channelId: string,
+    @PubSub() pubSub: PubSubEngine,
+
     @Ctx() { req, res, em, b, pages }: ExpressContext
   ): Promise<Game> {
     const game: Game = (await em.findOne(Game, {
@@ -372,6 +375,16 @@ export class GameResolver {
 
     game.active = false
     game.image = ""
+
+    // PubSub push notification
+    const payload: AnswerNotificationPayload = {
+      answers: game.answers as Array<string>,
+      gameId: game.id,
+      updatedAt: game.updatedAt,
+      active: game.active,
+    }
+
+    await pubSub.publish(game.id, payload)
 
     await em.persist(game).flush()
 
@@ -445,9 +458,9 @@ export class GameResolver {
   })
   subscribeToGameUpdate(
     @Arg("topic") topic: string,
-    @Root() { gameId, answers }: AnswerNotificationPayload
+    @Root() { gameId, answers, updatedAt, active }: AnswerNotificationPayload
   ): AnswerNotification {
-    return { gameId, answers }
+    return { gameId, answers, updatedAt, active }
   }
 
   @Mutation(type => Game)
@@ -490,6 +503,8 @@ export class GameResolver {
     const payload: AnswerNotificationPayload = {
       answers: game.answers as Array<string>,
       gameId: game.id,
+      updatedAt: game.updatedAt,
+      active: game.active,
     }
 
     await pubSub.publish(game.id, payload)
