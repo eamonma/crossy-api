@@ -1,16 +1,10 @@
-import { Type, wrap } from "@mikro-orm/core"
-import { GraphQLResolveInfo } from "graphql"
-import { setTimeout } from "timers/promises"
+import axios from "axios"
 import fs from "fs/promises"
 import {
   Arg,
-  Args,
   Authorized,
   Ctx,
   Field,
-  Info,
-  InputType,
-  Int,
   Mutation,
   ObjectType,
   PubSub,
@@ -22,11 +16,15 @@ import {
 } from "type-graphql"
 import { ExpressContext } from "../../contexts/ExpressContext"
 import Game from "../../entities/Game"
-import { FileInput } from "./FileInput"
-import s3 from "./s3"
-import axios from "axios"
-import puppeteer, { InterceptResolutionAction, Puppeteer } from "puppeteer"
 import User from "../../entities/User"
+import {
+  addAcross,
+  addDown,
+  checkGameAnswersMatch,
+  checkGameIsAllFilled,
+  getPage,
+  screenshotGrid,
+} from "./gameOperations"
 import {
   AnswerNotification,
   AnswerNotificationPayload,
@@ -73,141 +71,10 @@ export class GameResolver {
     return new Date().toISOString()
   }
 
-  async revitalizePage(
-    game: Game,
-    guildId: string,
-    channelId: string,
-    browser: puppeteer.Browser,
-    pages: Map<string, puppeteer.Page>
-  ): Promise<puppeteer.Page> {
-    const page = await browser.newPage()
-    await page.goto(process.env.GRID_URL as string)
-    await page.setViewport({
-      width: 1920,
-      height: 1080,
-      deviceScaleFactor: 2,
-    })
-
-    // Set puzzle board
-    const jsonFilePath = `temp/${guildId}-${channelId}.json`
-    await fs.writeFile(jsonFilePath, game.puzzle)
-    const jsonFile = await page.$("input[type=file]")
-    await jsonFile?.uploadFile(jsonFilePath)
-
-    // Set all answers from game
-    await page.waitForSelector("#all-answer-input")
-    const allAnswer = await page.$("#all-answer-input")
-    await allAnswer?.click()
-    await page.keyboard.press("Backspace")
-    await page.keyboard.press("Backspace")
-    await page.keyboard.press("Backspace")
-    await page.keyboard.press("Backspace")
-    await page.type("#all-answer-input", JSON.stringify(game.answers))
-    await page.click("#set-answers")
-
-    pages.set(game.id, page)
-
-    await fs.rm(jsonFilePath)
-
-    return page
-  }
-
-  async getPage(game: Game, ctx: ExpressContext): Promise<puppeteer.Page> {
-    const { pages, b } = ctx
-    let page = pages.get(game.id)
-
-    const { guildId, channelId } = game
-
-    try {
-      if (page && page.isClosed()) page = undefined
-      if (!page) {
-        page = await this.revitalizePage(game, guildId, channelId, b, pages)
-      }
-      await page.$("#crossword-grid")
-    } catch (error) {
-      page = await this.revitalizePage(game, guildId, channelId, b, pages)
-    }
-
-    return page
-  }
-
-  async screenshotGrid(
-    crosswordGrid: puppeteer.ElementHandle<Element> | null
-  ): Promise<string> {
-    if (!crosswordGrid) {
-      throw new Error("Something went wrong.")
-    }
-
-    const imageBuffer: Buffer = (await crosswordGrid.screenshot({
-      type: "png",
-    })) as Buffer
-
-    return Buffer.from(imageBuffer).toString("base64")
-  }
-
-  async checkGameIsAllFilled(game: Game): Promise<boolean> {
-    const puzzle: CrosswordData = JSON.parse(game.puzzle)
-
-    return puzzle.grid.every((grid, i) => {
-      return grid === "."
-        ? true
-        : game.answers[i] !== null && game.answers[i] !== undefined
-    })
-  }
-
-  async checkGameAnswersMatch(game: Game): Promise<Array<number>> {
-    const puzzle: CrosswordData = JSON.parse(game.puzzle)
-    const mismatched: Array<number> = []
-
-    puzzle.grid.forEach((grid, i) => {
-      if (!game.answers || !game.answers[i]) return
-
-      if (
-        grid === "." ||
-        grid[0].toUpperCase() === game.answers[i]!.toUpperCase()
-      )
-        return
-
-      return mismatched.push(i)
-    })
-
-    return mismatched
-  }
-
-  addAcross(
-    answer: string,
-    gridNum: number,
-    puzzle: CrosswordData,
-    answers: Array<string | null>
-  ): Array<string | null> {
-    const newAnswers = [...answers]
-    const index = puzzle.gridnums.findIndex(num => num === gridNum)
-
-    const newUpdatedAnswers: Array<number> = []
-    Array.from(answer).forEach((letter, i) => {
-      newAnswers[index + i] = letter.toUpperCase()
-      newUpdatedAnswers[index + i] = 1
-    })
-
-    return newAnswers
-  }
-
-  addDown(
-    answer: string,
-    gridNum: number,
-    puzzle: CrosswordData,
-    answers: Array<string | null>
-  ): Array<string | null> {
-    const newAnswers = [...answers]
-    const index = puzzle.gridnums.findIndex(num => num === gridNum)
-
-    const newUpdatedAnswers: Array<number> = []
-    Array.from(answer).forEach((letter, i) => {
-      newAnswers[index + i * puzzle.size.cols] = letter.toUpperCase()
-      newUpdatedAnswers[index + i * puzzle.size.cols] = 1
-    })
-
-    return newAnswers
+  @Query()
+  @Authorized()
+  secret(): string {
+    return "big secret"
   }
 
   @Query(type => Game)
@@ -228,10 +95,10 @@ export class GameResolver {
 
     if (!game) throw new Error("No such game.")
 
-    const page = await this.getPage(game, ctx)
+    const page = await getPage(game, ctx)
 
     const crosswordGrid = await page.$("#crossword-grid")
-    game.image = await this.screenshotGrid(crosswordGrid)
+    game.image = await screenshotGrid(crosswordGrid)
 
     await em.persist(game).flush()
 
@@ -266,7 +133,7 @@ export class GameResolver {
       active: true,
     })) as Game
 
-    return this.checkGameIsAllFilled(game)
+    return checkGameIsAllFilled(game)
   }
 
   @Mutation(type => Game)
@@ -281,9 +148,9 @@ export class GameResolver {
       channelId,
       active: true,
     })) as Game
-    const page = await this.getPage(game, ctx)
+    const page = await getPage(game, ctx)
 
-    const mismatched = await this.checkGameAnswersMatch(game)
+    const mismatched = await checkGameAnswersMatch(game)
 
     const mismatchedObject: { [gridNum: number]: string } = {}
 
@@ -322,7 +189,7 @@ export class GameResolver {
     // await page.click("#set-highlights")
 
     const crosswordGrid = await page.$("#crossword-grid")
-    game.image = await this.screenshotGrid(crosswordGrid)
+    game.image = await screenshotGrid(crosswordGrid)
 
     await page.click("#clear-highlights")
 
@@ -346,7 +213,7 @@ export class GameResolver {
       active: true,
     })) as Game
 
-    const mismatched = await this.checkGameAnswersMatch(game)
+    const mismatched = await checkGameAnswersMatch(game)
 
     const allCorrect = mismatched.length === 0
 
@@ -427,7 +294,7 @@ export class GameResolver {
     if (!crosswordGrid) {
       throw new Error("Something went wrong.")
     }
-    const imageBase64 = await this.screenshotGrid(crosswordGrid)
+    const imageBase64 = await screenshotGrid(crosswordGrid)
 
     const game = new Game({
       puzzle: puzzleJSON,
@@ -442,17 +309,6 @@ export class GameResolver {
     return game
   }
 
-  // @Mutation(returns => Boolean)
-  // async filledSubscription(
-  //   @PubSub() pubSub: PubSubEngine,
-  //   @Arg("topic") topic: string,
-  //   @Arg("message", { nullable: true }) message?: string
-  // ): Promise<boolean> {
-  //   const payload: AnswerNotificationPayload = {channelId }
-  //   await pubSub.publish(topic, payload)
-  //   return true
-  // }
-
   @Subscription({
     topics: ({ args }) => args.topic,
   })
@@ -464,6 +320,7 @@ export class GameResolver {
   }
 
   @Mutation(type => Game)
+  @Authorized()
   async fill(
     @Arg("gridNum") gridNum: number,
     @Arg("direction") direction: "across" | "down",
@@ -488,15 +345,15 @@ export class GameResolver {
     if (!game) throw new Error("No such game")
 
     // Get the web page
-    const page = await this.getPage(game, ctx)
+    const page = await getPage(game, ctx)
 
     // Type the entry
     // const newAnswers =
     const puzzle = JSON.parse(game.puzzle)
     if (direction === "across") {
-      game.answers = this.addAcross(answer, gridNum, puzzle, game.answers)
+      game.answers = addAcross(answer, gridNum, puzzle, game.answers)
     } else if (direction === "down") {
-      game.answers = this.addDown(answer, gridNum, puzzle, game.answers)
+      game.answers = addDown(answer, gridNum, puzzle, game.answers)
     }
 
     // PubSub push notification
@@ -534,7 +391,7 @@ export class GameResolver {
 
     const crosswordGrid = await page.$("#crossword-grid")
 
-    game.image = await this.screenshotGrid(crosswordGrid)
+    game.image = await screenshotGrid(crosswordGrid)
 
     if (!game.history) game.history = []
 

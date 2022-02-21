@@ -12,7 +12,6 @@ export class RegisterInput {
 
   @Field()
   @IsEmail()
-  @IsDomain(config.domain)
   email: string
 
   @Field()

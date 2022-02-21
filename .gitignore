@@ -3,3 +3,4 @@ dist
 .env
 .backup.env
 coverage
+prev-config

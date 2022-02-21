@@ -1,5 +1,3 @@
 {
-  "registration": true,
-  "guardRegistrationDomain": true,
-  "domain": "starlide.com"
+  "allowApiRegistration": false
 }

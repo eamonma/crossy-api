@@ -11,7 +11,7 @@ import { RegisterInput } from "./register/RegisterInput"
 export class RegisterResolver {
   @Mutation(type => User)
   // Disable if registration false in config
-  @UseMiddleware(Disabled(!config.registration))
+  // @UseMiddleware(Disabled(!config.))
   async register(
     @Args() { name, email, password }: RegisterInput,
     @Ctx() ctx: ExpressContext

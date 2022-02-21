@@ -4,20 +4,20 @@ import { ApolloServer } from "apollo-server-express"
 import chalk from "chalk"
 import cors from "cors"
 import express from "express"
-import { Server } from "http"
+import http, { Server } from "http"
 import process from "process"
+import puppeteer from "puppeteer"
 import "reflect-metadata"
 import { buildSchema } from "type-graphql"
 import ormConfig from "../orm.config"
 import { ExpressContext } from "./contexts/ExpressContext"
+import { APIConsumerResolver } from "./modules/api/APIConsumer"
 import { GameResolver } from "./modules/game/Game"
+import { SampleResolver } from "./modules/game/sampleSubscription"
 import { authChecker } from "./modules/user/authChecker"
 import { AuthorizationResolver } from "./modules/user/Authorization"
 import { LoginResolver } from "./modules/user/Login"
 import { RegisterResolver } from "./modules/user/Register"
-import puppeteer from "puppeteer"
-import { SampleResolver } from "./modules/game/sampleSubscription"
-import http from "http"
 
 const port = process.env.PORT || 4000
 
@@ -55,6 +55,7 @@ export default class Application {
         AuthorizationResolver,
         GameResolver,
         SampleResolver,
+        APIConsumerResolver,
       ],
       authChecker,
     })

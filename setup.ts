@@ -1,8 +1,12 @@
 import prompts, { PromptObject } from "prompts"
 import { randomBytes } from "crypto"
-import { promises as fs, existsSync } from "fs"
-const { writeFile } = fs
+import { existsSync } from "fs"
+import { writeFile } from "fs/promises"
 import chalk from "chalk"
+import { APIConsumerResolver } from "./src/modules/api/APIConsumer"
+import ormConfig from "./orm.config"
+import { Configuration, MikroORM } from "@mikro-orm/core"
+import { MongoDriver } from "@mikro-orm/mongodb"
 
 const camelToUpperSnakeCase = (str: string): string => {
   return str.replace(/[A-Z]/g, letter => `_${letter}`).toUpperCase()
@@ -33,90 +37,51 @@ const envQuestions: PromptObject[] = [
   {
     type: "text",
     name: "domain",
-    message: "Domain?",
+    message: "Hostname?",
     initial: "localhost",
   },
   {
-    type: "password",
-    name: "refreshSecret",
-    message: "JWT refresh token secret key?",
-    initial: randomBytes(128).toString("hex"),
+    type: "text",
+    name: "gridUrl",
+    message: "Grid url?",
+    initial: "https://grid.crossy.me",
   },
   {
-    type: "password",
-    name: "accessSecret",
-    message: "JWT access token secret key?",
-    initial: randomBytes(128).toString("hex"),
+    type: "text",
+    name: "apiKeygenSecret",
+    message: "AES Secret?",
+    initial: randomBytes(32).toString("hex"),
+  },
+  {
+    type: "text",
+    name: "apiKeygenIv",
+    message: "AES Init vector?",
+    initial: randomBytes(16).toString("hex"),
+  },
+  {
+    type: "text",
+    name: "mongoInitdbRootUsername",
+    message: "Docker Mongodb root username?",
+    initial: "admin",
+  },
+  {
+    type: "text",
+    name: "mongoInitdbRootPassword",
+    message: "Docker Mongodb root password?",
+    initial: randomBytes(32).toString("base64url"),
   },
   {
     type: "text",
     name: "db",
     message: "Database connection string?",
-  },
-  {
-    type: "text",
-    name: "oauthId",
-    message: "Google OAuth ID?",
-  },
-  {
-    type: "text",
-    name: "oauthSecret",
-    message: "Google OAuth secret?",
-  },
-  {
-    type: "text",
-    name: "awsSecretAccessKey",
-    message: "AWS secret access key?",
-  },
-  {
-    type: "text",
-    name: "awsAccessKeyId",
-    message: "AWS access key ID?",
-  },
-  {
-    type: "text",
-    name: "awsEndpoint",
-    message: "AWS endpoint?",
-  },
-  {
-    type: "text",
-    name: "sendgridApiKey",
-    message: "Sendgrid API key?",
-  },
-  {
-    type: "text",
-    name: "sendgridSender",
-    message: "Sendgrid verified sender?",
-  },
-]
-
-const configQuestions: PromptObject[] = [
-  {
-    type: "toggle",
-    name: "registration",
-    message: "Enable registration?",
-    initial: false,
-    active: "yes",
-    inactive: "no",
-  },
-  {
-    type: "toggle",
-    name: "guardRegistrationDomain",
-    message: "Limit registration email to one domain?",
-    initial: false,
-    active: "yes",
-    inactive: "no",
-  },
-  {
-    type: prev => (prev ? "text" : null),
-    name: "domain",
-    message: "What domain?",
+    initial: "mongodb://localhost:27017/?readPreference=primary&ssl=false",
   },
 ]
 
 ;(async () => {
   const envExists = existsSync(".env")
   const configExists = existsSync("app.config.json")
+  const configDefaults = { allowApiRegistration: false }
 
   if (!envExists) {
     const envResponse = await prompts(envQuestions)
@@ -129,14 +94,67 @@ const configQuestions: PromptObject[] = [
     }
 
     await writeFile(".env", envFileString)
+    console.log("Created " + chalk.bold.green(".env"))
   } else {
-    console.log(chalk.bold.red(".env already exists."))
+    console.log(chalk.bold.blue(".env already exists."))
   }
 
   if (!configExists) {
-    const configResponse = await prompts(configQuestions)
-    await writeFile("app.config.json", JSON.stringify(configResponse, null, 2))
+    // const configResponse = await prompts(configQuestions)
+    await writeFile("app.config.json", JSON.stringify(configDefaults, null, 2))
+    console.log("Created " + chalk.bold.green("app.config.json"))
   } else {
-    console.log(chalk.bold.red("app.config.json already exists."))
+    console.log(chalk.bold.blue("app.config.json already exists."))
   }
+
+  const createApiConsumers = await prompts([
+    {
+      type: "text",
+      name: "email",
+      message: "Email for API consumers?",
+    },
+    {
+      type: "text",
+      name: "nameBot",
+      message: "Name for API bot consumer?",
+      initial: "crossy-bot",
+    },
+    {
+      type: "text",
+      name: "nameWeb",
+      message: "Name for API web consumer?",
+      initial: "crossy-main",
+    },
+  ])
+
+  const { email, nameBot, nameWeb } = createApiConsumers
+
+  if (!email || !nameBot || !nameWeb) return
+
+  const orm = await MikroORM.init<MongoDriver>(
+    ormConfig as Configuration<MongoDriver>
+  )
+
+  const botKey = await APIConsumerResolver.createAPIConsumer(
+    { email, name: nameBot },
+    orm.em
+  )
+  const webKey = await APIConsumerResolver.createAPIConsumer(
+    { email, name: nameWeb },
+    orm.em
+  )
+
+  console.log("\n")
+
+  console.log("".padStart(botKey.length, "="))
+  console.log(chalk.bold.red("These API keys will only be shown here once.\n"))
+
+  console.log("Bot API key: \n" + chalk.bold.green(botKey))
+  console.log("\nWeb API key: \n" + chalk.bold.green(webKey))
+
+  console.log("".padStart(botKey.length, "="))
+
+  console.log("\n")
+
+  await orm.close()
 })()

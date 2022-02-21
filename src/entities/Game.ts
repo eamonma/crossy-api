@@ -32,10 +32,6 @@ export default class Game extends Base<Game> {
   @SerializedPrimaryKey()
   id!: string
 
-  // @Field()
-  // @Property()
-  // name: string
-
   @Field(type => String)
   @Property()
   puzzle: string
