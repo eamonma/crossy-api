@@ -19,14 +19,15 @@ export function IsDomain(
       options: validationOptions,
       validator: {
         validate(value: string, args: ValidationArguments) {
-          if (!config.guardRegistrationDomain) return true
-          if (!config.domain) return true
+          // if (!config.guardRegistrationDomain) return true
+          // if (!config.domain) return true
 
-          const [relatedPropertyName] = args.constraints
-          const relatedValue = (args.object as any)[relatedPropertyName]
+          // const [relatedPropertyName] = args.constraints
+          // const relatedValue = (args.object as any)[relatedPropertyName]
 
-          const domain = value.split("@")[1]
-          return domain === relatedPropertyName
+          // const domain = value.split("@")[1]
+          // return domain === relatedPropertyName
+          return true
         },
       },
     })
