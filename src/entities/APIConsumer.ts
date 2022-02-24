@@ -1,9 +1,8 @@
 import { Entity, Property, SerializedPrimaryKey } from "@mikro-orm/core"
 import { Base } from "./Base"
-import crypto from "crypto"
 
 @Entity()
-export default class APIConsumer {
+export default class APIConsumer extends Base<APIConsumer> {
   @SerializedPrimaryKey()
   id!: string
 
