@@ -16,7 +16,7 @@ export class HistoryEntry {
   playerId: string
 
   @Field(type => Number)
-  gridNum: number
+  nthAnswer: number
 
   @Field(type => String)
   direction: "across" | "down"

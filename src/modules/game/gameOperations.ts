@@ -28,7 +28,7 @@ export async function revitalizePage(
   // Set all answers from game
   await page.waitForSelector("#all-answer-input")
   const allAnswer = await page.$("#all-answer-input")
-  await allAnswer?.click()
+  await allAnswer?.click({ clickCount: 3 })
   await page.keyboard.press("Backspace")
   await page.keyboard.press("Backspace")
   await page.keyboard.press("Backspace")
@@ -112,12 +112,15 @@ export async function checkGameAnswersMatch(
 
 export function addAcross(
   answer: string,
-  gridNum: number,
   puzzle: CrosswordData,
-  answers: Array<string | null>
+  answers: Array<string | null>,
+  gridNum?: number,
+  nthAnswer?: number
 ): Array<string | null> {
   const newAnswers = [...answers]
-  const index = puzzle.gridnums.findIndex(num => num === gridNum)
+  const index = gridNum
+    ? puzzle.gridnums.findIndex(num => num === gridNum)
+    : (nthAnswer as number)
 
   const newUpdatedAnswers: Array<number> = []
   Array.from(answer).forEach((letter, i) => {
@@ -130,12 +133,15 @@ export function addAcross(
 
 export function addDown(
   answer: string,
-  gridNum: number,
   puzzle: CrosswordData,
-  answers: Array<string | null>
+  answers: Array<string | null>,
+  gridNum?: number,
+  nthAnswer?: number
 ): Array<string | null> {
   const newAnswers = [...answers]
-  const index = puzzle.gridnums.findIndex(num => num === gridNum)
+  const index = gridNum
+    ? puzzle.gridnums.findIndex(num => num === gridNum)
+    : (nthAnswer as number)
 
   const newUpdatedAnswers: Array<number> = []
   Array.from(answer).forEach((letter, i) => {

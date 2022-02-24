@@ -321,18 +321,64 @@ export class GameResolver {
 
   @Mutation(type => Game)
   @Authorized()
-  async fill(
-    @Arg("gridNum") gridNum: number,
+  async fillById(
+    @Arg("nthAnswer", { nullable: true }) nthAnswer: number,
+    @Arg("gridNum", { nullable: true }) gridNum: number,
+    @Arg("direction") direction: "across" | "down",
+    @Arg("answer") answer: string,
+    @Arg("gameId") gameId: string,
+    @Arg("playerId") playerId: string,
+    @Arg("generateNewImage", { defaultValue: false }) generateNewImage: boolean,
+    @PubSub() pubSub: PubSubEngine,
+    @Ctx() ctx: ExpressContext
+  ): Promise<Game | null> {
+    const game: Game = (await ctx.em.findOne(
+      Game,
+      {
+        id: gameId,
+        active: true,
+      },
+      { populate: ["players"] }
+    )) as Game
+
+    let player: User = (await ctx.em.findOne(User, {
+      discordId: playerId,
+    })) as User
+
+    if (!player) player = new User({ discordId: playerId })
+
+    if (!game.players || !game.players.contains(player))
+      game.players.add(player)
+
+    return this.fill(
+      direction,
+      answer,
+      game,
+      player,
+      pubSub,
+      ctx,
+      generateNewImage,
+      !!gridNum,
+      gridNum,
+      nthAnswer
+    )
+  }
+
+  @Mutation(type => Game)
+  @Authorized()
+  async fillByChannelAndGuildIds(
+    @Arg("nthAnswer", { nullable: true }) nthAnswer: number,
+    @Arg("gridNum", { nullable: true }) gridNum: number,
     @Arg("direction") direction: "across" | "down",
     @Arg("answer") answer: string,
     @Arg("guildId") guildId: string,
     @Arg("channelId") channelId: string,
     @Arg("playerId") playerId: string,
+    @Arg("generateNewImage", { defaultValue: true }) generateNewImage: boolean,
     @PubSub() pubSub: PubSubEngine,
     @Ctx() ctx: ExpressContext
   ): Promise<Game | null> {
-    const { req, res, em, b, pages } = ctx
-    const game: Game = (await em.findOne(
+    const game: Game = (await ctx.em.findOne(
       Game,
       {
         guildId,
@@ -341,6 +387,48 @@ export class GameResolver {
       },
       { populate: ["players"] }
     )) as Game
+
+    let player: User = (await ctx.em.findOne(User, {
+      discordId: playerId,
+    })) as User
+
+    if (!player) player = new User({ discordId: playerId })
+
+    if (!game.players.contains(player)) game.players.add(player)
+
+    return this.fill(
+      direction,
+      answer,
+      game,
+      player,
+      pubSub,
+      ctx,
+      generateNewImage,
+      !!gridNum,
+      gridNum,
+      nthAnswer
+    )
+  }
+
+  // @Mutation(type => Game)
+  // @Authorized()
+  async fill(
+    direction: "across" | "down",
+    answer: string,
+    game: Game,
+    player: User,
+    pubSub: PubSubEngine,
+    ctx: ExpressContext,
+    generateNewImage: boolean = true,
+    fillByGridNum: boolean = true,
+    gridNum?: number,
+    nthAnswer?: number
+  ): Promise<Game | null> {
+    const { req, res, em, b, pages } = ctx
+
+    console.log(
+      `Filling ${answer} in ${direction} direction in game ${game.id}`
+    )
 
     if (!game) throw new Error("No such game")
 
@@ -351,9 +439,9 @@ export class GameResolver {
     // const newAnswers =
     const puzzle = JSON.parse(game.puzzle)
     if (direction === "across") {
-      game.answers = addAcross(answer, gridNum, puzzle, game.answers)
+      game.answers = addAcross(answer, puzzle, game.answers, gridNum, nthAnswer)
     } else if (direction === "down") {
-      game.answers = addDown(answer, gridNum, puzzle, game.answers)
+      game.answers = addDown(answer, puzzle, game.answers, gridNum, nthAnswer)
     }
 
     // PubSub push notification
@@ -366,17 +454,51 @@ export class GameResolver {
 
     await pubSub.publish(game.id, payload)
 
-    const numberInput = await page.$("#number")
-    if (!numberInput) throw new Error("No such input")
+    if (fillByGridNum) {
+      const numberInput = await page.$("#number")
+      if (!numberInput) throw new Error("No such input")
 
-    await numberInput.click()
-    await page.keyboard.press("Backspace")
-    await page.type("#number", JSON.stringify(gridNum))
-    await page.select("#direction", direction)
-    await page.type("#answer", answer)
-    await page.click("#add-answer")
+      await numberInput.click({ clickCount: 3 })
+      await page.keyboard.press("Backspace")
+      await page.type("#number", JSON.stringify(gridNum))
+      await page.select("#direction", direction)
+      await page.type("#answer", answer)
+      await page.click("#add-answer")
+    } else {
+      // Fill by nthAnswer
+      const nthAnswerInput = await page.$("#nthAnswer")
+      if (!nthAnswerInput) throw new Error("No such input")
 
-    await page.click("#set-answers")
+      await nthAnswerInput.click({ clickCount: 3 })
+      await page.keyboard.press("Backspace")
+      await page.type("#nthAnswer", JSON.stringify(nthAnswer))
+      await page.type("#letter", answer)
+      await page.click("#set-letter")
+    }
+
+    // await page.click("#set-answers")
+
+    if (!game.history) game.history = []
+
+    game.history.push({
+      playerId: player.id,
+      answer: answer.toUpperCase(),
+      direction,
+      nthAnswer: gridNum
+        ? puzzle.gridnums.findIndex((num: number) => num === gridNum)
+        : (nthAnswer as number),
+    })
+
+    // If no new image is needed
+    if (!generateNewImage) {
+      await em.persist(game).flush()
+
+      console.log(
+        `Filled ${answer} in ${direction} direction in game ${game.id}`
+      )
+
+      return game
+    }
 
     // const pageAnswers = await (
     //   await allAnswers?.getProperty("value")
@@ -392,25 +514,6 @@ export class GameResolver {
     const crosswordGrid = await page.$("#crossword-grid")
 
     game.image = await screenshotGrid(crosswordGrid)
-
-    if (!game.history) game.history = []
-
-    game.history.push({
-      playerId,
-      answer: answer.toUpperCase(),
-      direction,
-      gridNum,
-    })
-
-    // if(!game.players) game.players = []
-
-    // wrap(game).assign({players: })
-    // Player information
-    let player: User = (await em.findOne(User, { discordId: playerId })) as User
-
-    if (!player) player = new User({ discordId: playerId })
-
-    if (!game.players.contains(player)) game.players.add(player)
 
     await em.persist(game).flush()
 

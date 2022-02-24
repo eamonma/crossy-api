@@ -22,10 +22,10 @@ export default class User extends Base<User> {
   @Property({ unique: true })
   discordId: string
 
-  // @Field(type => String)
-  // @Property({ nullable: true, unique: true })
-  // @IsEmail()
-  // email: string | null
+  @Field(type => String)
+  @Property({ nullable: true, unique: true })
+  @IsEmail()
+  email: string | null
 
   // @Property()
   // password: string

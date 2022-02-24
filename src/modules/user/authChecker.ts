@@ -18,14 +18,11 @@ export const authChecker: AuthChecker<ExpressContext> = async (
 
   const apiToken = req.header("Authorization") as string
 
-  console.log(req.headers)
-
   let encryptedKey = cipher.update(apiToken, "utf-8", "base64")
 
   encryptedKey += cipher.final("base64")
 
   const apiConsumer = await em.findOne(APIConsumer, { key: encryptedKey })
-  console.log(apiConsumer)
 
   if (!apiConsumer) return false
 
