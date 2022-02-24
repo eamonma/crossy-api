@@ -1,3 +1,4 @@
 {
-  "allowApiRegistration": false
+  "allowApiRegistration": true,
+  "allowApiRegistrationAfterTwoConsumers": false
 }

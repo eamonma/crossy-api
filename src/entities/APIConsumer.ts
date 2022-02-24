@@ -3,7 +3,7 @@ import { Base } from "./Base"
 import crypto from "crypto"
 
 @Entity()
-export default class APIConsumer extends Base<APIConsumer> {
+export default class APIConsumer {
   @SerializedPrimaryKey()
   id!: string
 

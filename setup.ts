@@ -4,6 +4,7 @@ import { existsSync } from "fs"
 import { writeFile } from "fs/promises"
 import chalk from "chalk"
 import { APIConsumerResolver } from "./src/modules/api/APIConsumer"
+import "dotenv/config"
 import ormConfig from "./orm.config"
 import { Configuration, MikroORM } from "@mikro-orm/core"
 import { MongoDriver } from "@mikro-orm/mongodb"
@@ -131,30 +132,35 @@ const envQuestions: PromptObject[] = [
 
   if (!email || !nameBot || !nameWeb) return
 
-  const orm = await MikroORM.init<MongoDriver>(
-    ormConfig as Configuration<MongoDriver>
-  )
+  // const orm = await MikroORM.init<MongoDriver>(
+  //   ormConfig as Configuration<MongoDriver>
+  // )
 
-  const botKey = await APIConsumerResolver.createAPIConsumer(
-    { email, name: nameBot },
-    orm.em
-  )
-  const webKey = await APIConsumerResolver.createAPIConsumer(
-    { email, name: nameWeb },
-    orm.em
-  )
+  const botKey = await APIConsumerResolver.createAPIConsumerAndLeaveHanging({
+    email,
+    name: nameBot,
+  })
+  const webKey = await APIConsumerResolver.createAPIConsumerAndLeaveHanging({
+    email,
+    name: nameWeb,
+  })
+
+  console.log("\n")
+  console.log("".padStart(botKey.length, "="))
+
+  console.log("Add the following entities to apiconsumers:")
+
+  console.log(botKey)
+  console.log(webKey)
+
+  // console.log(chalk.bold.red("These API keys will only be shown here once.\n"))
+
+  // console.log("Bot API key: \n" + chalk.bold.green(botKey))
+  // console.log("\nWeb API key: \n" + chalk.bold.green(webKey))
+
+  console.log("".padStart(botKey.length, "="))
 
   console.log("\n")
 
-  console.log("".padStart(botKey.length, "="))
-  console.log(chalk.bold.red("These API keys will only be shown here once.\n"))
-
-  console.log("Bot API key: \n" + chalk.bold.green(botKey))
-  console.log("\nWeb API key: \n" + chalk.bold.green(webKey))
-
-  console.log("".padStart(botKey.length, "="))
-
-  console.log("\n")
-
-  await orm.close()
+  // await orm.close()
 })()
